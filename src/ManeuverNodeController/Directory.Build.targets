@@ -2,6 +2,8 @@
 <Project>
     <!-- Commands for Windows and Linux -->
     <PropertyGroup>
+        <NuGetExecutable Condition="'$(OS)' == 'Windows_NT'">nuget</NuGetExecutable>
+        <NuGetExecutable Condition="'$(OS)' != 'Windows_NT'">mono /usr/local/bin/nuget.exe</NuGetExecutable>
         <PowerShellExecutable Condition="'$(OS)' == 'Windows_NT'">powershell</PowerShellExecutable>
         <PowerShellExecutable Condition="'$(OS)' != 'Windows_NT'">pwsh</PowerShellExecutable>
     </PropertyGroup>
@@ -65,6 +67,28 @@
         <Exec Condition="$(ConfigurationName) == Release"
               Command="$(PowerShellExecutable) -Command &quot;&amp; {Push-Location '$(SolutionDir)/dist/$(ConfigurationName)'; Compress-Archive -Path './*' -DestinationPath '$(SolutionDir)/dist/$(SolutionName)-$(Version).zip'; Pop-Location}&quot;"/>
 
+        <!-- Packing NuGet package -->
+        <Message Text="Copying plugin DLLs and XMLs to temporary folder for NuGet packing" Condition="$(ConfigurationName) == Release"/>
+        <MakeDir Condition="$(ConfigurationName) == Release"
+                 Directories="$(SolutionDir)/temp_nuget"/>
+        <ItemGroup Label="Plugin XMLs to be copied">
+            <PluginXMLs Include="$(PluginBinPath)/**/*.xml"/>
+        </ItemGroup>
+        <Copy Condition="$(ConfigurationName) == Release"
+              SourceFiles="@(PluginDLLs)"
+              DestinationFolder="$(SolutionDir)/temp_nuget"/>
+        <Copy Condition="$(ConfigurationName) == Release"
+              SourceFiles="@(PluginXMLs)"
+              DestinationFolder="$(SolutionDir)/temp_nuget"/>
+
+        <Message Text="Packing NuGet package" Condition="$(ConfigurationName) == Release"/>
+        <Exec Condition="$(ConfigurationName) == Release"
+              Command="$(NuGetExecutable) pack &quot;$(SolutionDir)/Package.nuspec&quot; -OutputDirectory &quot;$(SolutionDir)/nuget&quot; -Properties &quot;NoWarn=NU5125;id=$(ProjectName);version=$(Version);authors=$(Authors);description=$(Description);repositoryType=$(RepositoryType);repositoryUrl=$(RepositoryUrl)&quot;" />
+
+        <Message Text="Removing temporary folder" Condition="$(ConfigurationName) == Release"/>
+        <RemoveDir Condition="$(ConfigurationName) == Release"
+                   Directories="$(SolutionDir)/temp_nuget"/>
+
         <!-- Deploying plugin to game folder -->
         <Message Text="Clean up the game's plugin folder" Condition="$(ConfigurationName) == Deploy Or $(ConfigurationName) == DeployAndRun"/>
         <RemoveDir Condition="$(ConfigurationName) == Deploy Or $(ConfigurationName) == DeployAndRun"
@@ -85,5 +109,14 @@
         <Message Text="Deploy plugin and run game" Condition="$(ConfigurationName) == DeployAndRun"/>
         <Exec Condition="$(ConfigurationName) == DeployAndRun"
               Command="$(PowerShellExecutable) &quot;start-process &quot;&quot;$(KSP2DIR)\KSP2_x64.exe&quot;&quot;&quot;"/>
+
+        <OnError ExecuteTargets="Cleanup"/>
+    </Target>
+
+    <!-- Clean up temporary folder if build fails -->
+    <Target Name="Cleanup">
+        <Message Text="Removing temporary folder if it exists"/>
+        <RemoveDir Directories="$(SolutionDir)/temp_nuget"
+                   Condition="Exists('$(SolutionDir)/temp_nuget')"/>
     </Target>
 </Project>
